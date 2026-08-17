@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true,
+    "sourceMap": true,
+    "resolveJsonModule": true,
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@pma/core": ["packages/core/src/index.ts"],
+      "@pma/db": ["packages/db/src/index.ts"],
+      "@pma/agent": ["packages/agent/src/index.ts"],
+      "@pma/api": ["packages/api/src/index.ts"],
+      "@pma/worker": ["packages/worker/src/index.ts"]
+    }
+  },
+  "exclude": ["node_modules", "dist"]
+}

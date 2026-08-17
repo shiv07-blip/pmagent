@@ -1,0 +1,29 @@
+{
+  "name": "pmagent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI maintenance triage + tenant communications for property managers",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @pma/core && npm run build -w @pma/db && npm run build -w @pma/agent && npm run build -w @pma/api && npm run build -w @pma/worker && npm run build -w @pma/web",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "npm run test --workspaces --if-present",
+    "dev:db": "docker compose up -d postgres redis",
+    "dev:api": "npm run dev -w @pma/api",
+    "dev:worker": "npm run dev -w @pma/worker",
+    "dev:web": "npm run dev -w @pma/web",
+    "db:migrate": "npm run migrate -w @pma/db",
+    "db:seed": "npm run seed -w @pma/db",
+    "db:studio": "npm run studio -w @pma/db"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
