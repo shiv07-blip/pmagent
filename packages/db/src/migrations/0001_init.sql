@@ -6,6 +6,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- Roles (idempotent; also created by infra/postgres/init.sql for docker)
+-- Wrapped in exception handler for hosted Postgres (e.g. Neon) where role creation is restricted
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pmagent_api') THEN
@@ -14,6 +15,8 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pmagent_worker') THEN
     CREATE ROLE pmagent_worker LOGIN PASSWORD 'pmagent_worker' NOINHERIT BYPASSRLS;
   END IF;
+EXCEPTION WHEN insufficient_privilege THEN
+  RAISE NOTICE 'Skipping role creation (hosted Postgres) — using default role';
 END $$;
 
 -- Enums ----------------------------------------------------------------------
@@ -378,8 +381,15 @@ CREATE POLICY membership_scope ON tenant_memberships
   USING (tenant_id = current_setting('app.tenant_id', true)::uuid)
   WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
 
--- Grants ----------------------------------------------------------------------
-GRANT USAGE ON SCHEMA public TO pmagent_api, pmagent_worker;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO pmagent_api, pmagent_worker;
-ALTER DEFAULT PRIVILEGES FOR ROLE pmagent IN SCHEMA public
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO pmagent_api, pmagent_worker;
+-- Grants (skip on hosted Postgres where custom roles may not exist) ------
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pmagent_api') THEN
+    GRANT USAGE ON SCHEMA public TO pmagent_api, pmagent_worker;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO pmagent_api, pmagent_worker;
+    ALTER DEFAULT PRIVILEGES FOR ROLE pmagent IN SCHEMA public
+      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO pmagent_api, pmagent_worker;
+  END IF;
+EXCEPTION WHEN insufficient_privilege THEN
+  RAISE NOTICE 'Skipping grants (hosted Postgres) — using default role';
+END $$;
