@@ -12,10 +12,14 @@ export interface QueueBundle {
 }
 
 export function createQueues(redisUrl: string): QueueBundle {
-  const connection = { host: 'localhost', port: 6379 };
   const u = new URL(redisUrl);
-  connection.host = u.hostname;
-  connection.port = Number(u.port || 6379);
+  const connection: Record<string, unknown> = {
+    host: u.hostname,
+    port: Number(u.port || 6379),
+  };
+  if (u.protocol === 'rediss:') {
+    connection.tls = {};
+  }
 
   const ingest = new Queue<IngestJobData>('ingest', {
     connection,
