@@ -6,17 +6,19 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- Roles (idempotent; also created by infra/postgres/init.sql for docker)
--- Wrapped in exception handler for hosted Postgres (e.g. Neon) where role creation is restricted
+-- On hosted Postgres (Neon), role creation is restricted — check first
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pmagent_api') THEN
-    CREATE ROLE pmagent_api LOGIN PASSWORD 'pmagent_api' NOINHERIT;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pmagent') THEN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pmagent_api') THEN
+      CREATE ROLE pmagent_api LOGIN PASSWORD 'pmagent_api' NOINHERIT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pmagent_worker') THEN
+      CREATE ROLE pmagent_worker LOGIN PASSWORD 'pmagent_worker' NOINHERIT BYPASSRLS;
+    END IF;
+  ELSE
+    RAISE NOTICE 'Hosted Postgres detected — skipping role creation';
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pmagent_worker') THEN
-    CREATE ROLE pmagent_worker LOGIN PASSWORD 'pmagent_worker' NOINHERIT BYPASSRLS;
-  END IF;
-EXCEPTION WHEN insufficient_privilege THEN
-  RAISE NOTICE 'Skipping role creation (hosted Postgres) — using default role';
 END $$;
 
 -- Enums ----------------------------------------------------------------------
@@ -384,12 +386,15 @@ CREATE POLICY membership_scope ON tenant_memberships
 -- Grants (skip on hosted Postgres where custom roles may not exist) ------
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pmagent_api') THEN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pmagent_api')
+     AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pmagent_worker') THEN
     GRANT USAGE ON SCHEMA public TO pmagent_api, pmagent_worker;
     GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO pmagent_api, pmagent_worker;
-    ALTER DEFAULT PRIVILEGES FOR ROLE pmagent IN SCHEMA public
-      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO pmagent_api, pmagent_worker;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pmagent') THEN
+      ALTER DEFAULT PRIVILEGES FOR ROLE pmagent IN SCHEMA public
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO pmagent_api, pmagent_worker;
+    END IF;
   END IF;
-EXCEPTION WHEN insufficient_privilege THEN
+EXCEPTION WHEN OTHERS THEN
   RAISE NOTICE 'Skipping grants (hosted Postgres) — using default role';
 END $$;
