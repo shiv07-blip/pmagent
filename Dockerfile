@@ -33,7 +33,7 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/packages/core/dist packages/core/dist
 COPY --from=builder /app/packages/core/package.json packages/core/
 COPY --from=builder /app/packages/db/dist packages/db/dist
-COPY --from=builder /app/packages/db/src/migrations packages/db/src/migrations
+COPY --from=builder /app/packages/db/src/migrations packages/db/dist/migrations
 COPY --from=builder /app/packages/db/package.json packages/db/
 COPY --from=builder /app/packages/agent/dist packages/agent/dist
 COPY --from=builder /app/packages/agent/package.json packages/agent/
@@ -43,10 +43,10 @@ COPY --from=builder /app/packages/worker/dist packages/worker/dist
 COPY --from=builder /app/packages/worker/package.json packages/worker/
 COPY --from=builder /app/packages/web/dist packages/web/dist
 
-COPY start.js ./
+COPY start.mjs ./
 
 ENV NODE_ENV=production
 
 EXPOSE 8080
 
-CMD ["tini", "--", "node", "start.js"]
+CMD ["tini", "--", "node", "start.mjs"]
