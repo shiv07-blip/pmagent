@@ -7,6 +7,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Upstash Redis requires TLS — auto-upgrade redis:// to rediss://
 if (process.env.REDIS_URL && process.env.REDIS_URL.startsWith('redis://') && process.env.REDIS_URL.includes('upstash')) {
   process.env.REDIS_URL = process.env.REDIS_URL.replace('redis://', 'rediss://');
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
   console.log('[start] upgraded REDIS_URL to rediss:// for Upstash TLS');
 }
 
