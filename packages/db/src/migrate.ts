@@ -27,7 +27,11 @@ export async function migrate(): Promise<void> {
     process.env.API_DATABASE_URL;
   if (!connectionString) throw new Error('MIGRATE_DATABASE_URL / DATABASE_URL not set');
 
-  const pool = new Pool({ connectionString, max: 1 });
+  const pool = new Pool({
+    connectionString,
+    max: 1,
+    ssl: connectionString?.includes('neon.tech') ? { rejectUnauthorized: false } : undefined,
+  });
   const client = await pool.connect();
   try {
     await ensureMigrationTable(client);

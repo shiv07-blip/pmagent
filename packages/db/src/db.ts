@@ -9,10 +9,14 @@ let _workerPool: Pool | undefined;
 
 export function apiPool(): Pool {
   if (!_apiPool) {
+    const ssl = process.env.API_DATABASE_URL?.includes('neon.tech')
+      ? { rejectUnauthorized: false }
+      : undefined;
     _apiPool = new Pool({
       connectionString: process.env.API_DATABASE_URL,
       max: Number(process.env.API_DB_POOL_MAX ?? 20),
       idleTimeoutMillis: 30_000,
+      ssl,
     });
     _apiPool.on('error', (err) => {
       console.error('[db:api] idle client error', err.message);
@@ -23,10 +27,14 @@ export function apiPool(): Pool {
 
 export function workerPool(): Pool {
   if (!_workerPool) {
+    const ssl = process.env.WORKER_DATABASE_URL?.includes('neon.tech')
+      ? { rejectUnauthorized: false }
+      : undefined;
     _workerPool = new Pool({
       connectionString: process.env.WORKER_DATABASE_URL,
       max: Number(process.env.WORKER_DB_POOL_MAX ?? 20),
       idleTimeoutMillis: 30_000,
+      ssl,
     });
     _workerPool.on('error', (err) => {
       console.error('[db:worker] idle client error', err.message);
