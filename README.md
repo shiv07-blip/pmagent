@@ -113,6 +113,7 @@ npm run dev:db          # postgres (pgvector) + redis
 cp .env.example .env    # edit URLs/secrets as needed
 npm run db:migrate
 npm run db:seed         # creates demo tenant acme-pm (admin@acme.example / admin123)
+                        # + a realistic demo workload (requests, work orders, CSAT, LLM usage)
 npm run dev:api         # http://localhost:8080
 npm run dev:worker      # consumes ingest/agent/notify queues
 ```
