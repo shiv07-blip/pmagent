@@ -1,5 +1,9 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import { Readable } from 'node:stream';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import fastifyStatic from '@fastify/static';
 import { AppError } from '@pma/core';
 import { ping } from '@pma/db';
 import { registerAuth } from './auth.js';
@@ -76,20 +80,25 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   });
 
   await registerAuth(app);
-  await registerWs(app, deps.pubsub);
 
-  await app.register(registerAuthRoutes);
-  await app.register(registerTenantRoutes);
-  await app.register(registerPropertyRoutes);
-  await app.register(registerResidentRoutes);
-  await app.register(registerVendorRoutes);
-  await app.register(registerRequestRoutes);
-  await app.register(registerWorkOrderRoutes);
-  await app.register(registerAuditRoutes);
-  await app.register(registerDashboardRoutes);
+  await app.register(async (api) => {
+    await api.register(registerAuthRoutes);
+    await api.register(registerTenantRoutes);
+    await api.register(registerPropertyRoutes);
+    await api.register(registerResidentRoutes);
+    await api.register(registerVendorRoutes);
+    await api.register(registerRequestRoutes);
+    await api.register(registerWorkOrderRoutes);
+    await api.register(registerAuditRoutes);
+    await api.register(registerDashboardRoutes);
+    await api.register(registerPolicyRoutes);
+    await registerWs(api, deps.pubsub);
+  }, { prefix: '/api' });
+
+  // Inbound webhooks from external services (Twilio/MSG91, Telegram, vendor
+  // dispatch callbacks) and the Prometheus scrape endpoint stay at the root.
   await app.register(registerTelegramRoutes);
   await app.register(registerWebhookRoutes);
-  await app.register(registerPolicyRoutes);
   await app.register(registerVendorWebhookRoutes);
   await app.register(registerMetricsRoute);
 
@@ -97,6 +106,24 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     await ping();
     return { ok: true, service: 'pma-api', version: '0.1.0' };
   });
+
+  // Serve the React SPA from the same origin in production.
+  const webDistCandidates = [
+    fileURLToPath(new URL('../../web/dist', import.meta.url)),
+    fileURLToPath(new URL('../../../web/dist', import.meta.url)),
+  ];
+  const webDist = webDistCandidates.find(
+    (dir) => existsSync(join(dir, 'index.html')),
+  );
+  if (webDist) {
+    await app.register(fastifyStatic, { root: webDist, wildcard: false });
+    app.setNotFoundHandler((req, reply) => {
+      if (req.url.startsWith('/api/') || req.url === '/api') {
+        return reply.code(404).send({ error: 'NOT_FOUND', message: 'Route not found' });
+      }
+      return reply.sendFile('index.html');
+    });
+  }
 
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof AppError) {

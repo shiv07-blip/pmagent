@@ -4,7 +4,8 @@ services:
     runtime: node
     plan: free
     buildCommand: npm ci && npm run build
-    startCommand: node start.js
+    startCommand: node start.mjs
+    healthCheckPath: /healthz
     envVars:
       - key: NODE_ENV
         value: production
@@ -14,9 +15,15 @@ services:
         value: 0.0.0.0
       - key: LLM_PROVIDER
         value: mock
+      - key: EMBEDDING_PROVIDER
+        value: mock
       - key: NOTIFY_PROVIDER
-        value: telegram
+        value: console
       - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: WEBHOOK_SECRET
+        sync: false
+      - key: SMTP_TO
         sync: false
       - key: JWT_SECRET
         generateValue: true

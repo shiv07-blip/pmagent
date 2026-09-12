@@ -72,7 +72,7 @@ LLM providers: Anthropic / OpenAI / mock. `createProvider()` reads
 `searchPolicy` (worker) answers "who pays for this?" from uploaded documents:
 vector cosine search over `policy_chunks.embedding` (pgvector, HNSW index) plus a
 keyword `ILIKE` fallback, deduplicated and capped at 3 hits. Upload via the admin
-`POST /policies` endpoint (text is chunked, embedded, and indexed synchronously).
+`POST /api/policies` endpoint (text is chunked, embedded, and indexed synchronously).
 `EMBEDDING_PROVIDER=mock` gives a deterministic offline embedder; the seed writes
 real vectors so the demo works without API keys.
 
@@ -82,7 +82,7 @@ When classified as a repair that needs a trade, the worker builds the work order
 auto-selects the preferred/emergency-capable vendor, and auto-dispatches it:
 the vendor gets a token-scoped accept/decline link (`/webhooks/vendor/:token/accept|decline`).
 Accept/decline transitions `assigned → accepted | rejected`; `accepted` enables
-scheduling. `POST /work_orders/:id/approve` still gates large/uncertain jobs.
+scheduling. `POST /api/work_orders/:id/approve` still gates large/uncertain jobs.
 
 ### Stalled-ticket recovery & CSAT
 
@@ -93,7 +93,7 @@ scheduling. `POST /work_orders/:id/approve` still gates large/uncertain jobs.
 
 ### Dashboard & SLA
 
-- `GET /dashboard` (admin) — aggregated metrics: request counts by status, work
+- `GET /api/dashboard` (admin) — aggregated metrics: request counts by status, work
   order status + costs, SLA breaches (requests unacknowledged > `ackSlaMinutes`),
   average CSAT, recent activity and recent requests.
 - SLA monitor runs in the worker every 5 minutes. For each active tenant, it
@@ -120,7 +120,7 @@ npm run dev:worker      # consumes ingest/agent/notify queues
 Smoke test:
 
 ```bash
-TOKEN=$(curl -s -X POST localhost:8080/auth/login -H 'content-type: application/json' \
+TOKEN=$(curl -s -X POST localhost:8080/api/auth/login -H 'content-type: application/json' \
   -d '{"email":"admin@acme.example","password":"admin123"}' | jq -r .token)
 curl -s -X POST localhost:8080/webhooks/sms \
   -H 'content-type: application/x-www-form-urlencoded' \
@@ -128,11 +128,34 @@ curl -s -X POST localhost:8080/webhooks/sms \
   --data-urlencode 'From=+12025550101' \
   --data-urlencode 'To=+15551230000' \
   --data-urlencode 'Body=my dishwasher is leaking, please repair'
-curl -s localhost:8080/requests -H "Authorization: Bearer $TOKEN" | jq
+curl -s localhost:8080/api/requests -H "Authorization: Bearer $TOKEN" | jq
 ```
 
 With the default `LLM_PROVIDER=mock` and `NOTIFY_PROVIDER=console`, the whole
 pipeline runs without any API keys.
+
+## Deploy (Render)
+
+The whole stack — React SPA, Fastify API, WebSocket, and the BullMQ worker — runs
+as a single Render web service on one origin (managed with `render.yaml`):
+
+1. Push to GitHub and create a **Blueprint** from `render.yaml`
+   (or create a Web Service pointing at the repo).
+2. Attach a **managed Postgres** database (supports pgvector) in the Render
+   dashboard and set `API_DATABASE_URL`, `WORKER_DATABASE_URL`,
+   `MIGRATE_DATABASE_URL` from its connection strings (SSL on; the app handles it).
+3. Add a **Redis** instance for BullMQ (e.g. Upstash via the Render marketplace or
+   Render's Redis / Redis Cloud) and set `REDIS_URL` (`start.mjs` auto-upgrades
+   `redis://` → `rediss://` for Upstash and disables cert verification).
+4. Set `PUBLIC_BASE_URL` to your service URL (e.g. `https://pmagent.onrender.com`)
+   — used for vendor accept/decline links and inbound webhook verification.
+5. Deploy. `start.mjs` runs migrations, seeds the demo tenant, then forks the API
+   and worker. The SPA is built and served by the API; `/api/*` and `/api/ws`
+   resolve to the API, everything else falls back to `index.html`.
+
+Everything is self-contained: with `LLM_PROVIDER=mock`,
+`EMBEDDING_PROVIDER=mock`, and `NOTIFY_PROVIDER=console` it runs with no external
+API keys.
 
 ## Webhook security
 
@@ -164,7 +187,7 @@ call `loadRootEnv()` to walk up to the repo root and load `.env`.
 - Money is integer cents. Timestamps are UTC (`timestamptz`).
 - Passwords are scrypt (`scrypt$saltHex$derivedHex`), never bcrypt.
 - Work orders start as `proposed` when cost exceeds the owner-approval threshold or
-  no vendor can be selected; an owner approves via `POST /work_orders/:id/approve`.
+  no vendor can be selected; an owner approves via `POST /api/work_orders/:id/approve`.
 - Migrations are versioned SQL files in `packages/db/src/migrations/`; add a new
   numbered file, never edit an applied one.
 
@@ -178,39 +201,43 @@ npm test
 
 ## API endpoints
 
+The React SPA serves against the same origin; all API + WebSocket routes live
+under `/api` (the Vite dev proxy forwards `/api` to the Fastify server). Inbound
+webhooks, the Prometheus `/metrics` endpoint, and `/healthz` stay at the root.
+
 | Method   | Path                        | Auth   | Description                             |
 | -------- | --------------------------- | ------ | --------------------------------------- |
-| POST     | /auth/register              | none   | Create user + tenant                    |
-| POST     | /auth/login                 | none   | Login → JWT + tenant list               |
-| GET      | /auth/me                    | yes    | Current user + tenants                  |
-| GET      | /tenants                    | yes    | List tenants (all roles)                |
-| GET      | /tenants/current            | yes    | Current tenant detail                   |
-| PUT      | /tenants/current/config     | admin  | Update tenant config                    |
-| GET/POST | /properties                 | yes    | List / create properties                |
-| GET/POST | /residents                  | yes    | List / create residents                 |
-| GET/POST | /vendors                    | yes    | List / create vendors                   |
-| PATCH    | /vendors/:id                | admin  | Update vendor                           |
-| GET      | /requests                   | yes    | List requests (filter: status, unit, resident) |
-| GET      | /requests/:id               | yes    | Request detail + messages               |
-| POST     | /requests/:id/messages      | yes    | Send outbound message to resident       |
-| POST     | /requests/:id/close         | yes    | Close a request                         |
-| GET      | /work_orders                | yes    | List work orders                        |
-| GET      | /work_orders/:id            | yes    | Work order detail + events              |
-| PATCH    | /work_orders/:id/status     | admin  | Transition WO status                    |
-| POST     | /work_orders/:id/approve    | owner  | Approve proposed WO (owner gate)        |
-| GET      | /dashboard                  | admin  | Aggregated metrics (incl. CSAT)        |
-| GET      | /audit                      | admin  | Audit trail                             |
-| GET/POST | /policies                   | admin  | List / upload policy docs (chunk + embed) |
-| DELETE   | /policies/:id               | admin  | Delete a policy document               |
+| POST     | /api/auth/register          | none   | Create user + tenant                    |
+| POST     | /api/auth/login             | none   | Login → JWT + tenant list               |
+| GET      | /api/auth/me                | yes    | Current user + tenants                  |
+| GET      | /api/tenants                | yes    | List tenants (all roles)                |
+| GET      | /api/tenants/current        | yes    | Current tenant detail                   |
+| PUT      | /api/tenants/current/config | admin  | Update tenant config                    |
+| GET/POST | /api/properties             | yes    | List / create properties                |
+| GET/POST | /api/residents              | yes    | List / create residents                 |
+| GET/POST | /api/vendors                | yes    | List / create vendors                   |
+| PATCH    | /api/vendors/:id            | admin  | Update vendor                           |
+| GET      | /api/requests               | yes    | List requests (filter: status, unit, resident) |
+| GET      | /api/requests/:id           | yes    | Request detail + messages               |
+| POST     | /api/requests/:id/messages  | yes    | Send outbound message to resident       |
+| POST     | /api/requests/:id/close     | yes    | Close a request                         |
+| GET      | /api/work_orders            | yes    | List work orders                        |
+| GET      | /api/work_orders/:id        | yes    | Work order detail + events              |
+| PATCH    | /api/work_orders/:id/status | admin  | Transition WO status                    |
+| POST     | /api/work_orders/:id/approve| owner  | Approve proposed WO (owner gate)        |
+| GET      | /api/dashboard              | admin  | Aggregated metrics (incl. CSAT)        |
+| GET      | /api/audit                  | admin  | Audit trail                             |
+| GET/POST | /api/policies               | admin  | List / upload policy docs (chunk + embed) |
+| DELETE   | /api/policies/:id           | admin  | Delete a policy document               |
 | GET      | /metrics                    | none   | Prometheus text metrics                |
-| GET      | /metrics/usage              | admin  | LLM usage + cost                        |
+| GET      | /api/metrics/usage          | admin  | LLM usage + cost                        |
 | POST     | /webhooks/sms               | none   | Twilio-style SMS webhook (sig-verified) |
 | POST     | /webhooks/msg91             | none   | MSG91 SMS webhook (HMAC-verified)       |
 | POST     | /webhooks/email             | none   | Inbound email webhook (HMAC-verified)   |
 | POST     | /webhooks/portal            | none   | Portal message webhook (HMAC-verified)  |
 | POST     | /webhooks/telegram          | none   | Telegram webhook (HMAC-verified)        |
 | GET      | /webhooks/vendor/:token/accept|decline | none | Vendor dispatch accept/decline link |
-| WS       | /ws?token=&tenant=          | JWT    | Real-time event stream                  |
+| WS       | /api/ws?token=&tenant=      | JWT    | Real-time event stream                  |
 | GET      | /healthz                    | none   | Health check                            |
 
 ## Tests & checks
