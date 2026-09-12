@@ -12,6 +12,10 @@ const envSchema = z.object({
   WORKER_DATABASE_URL: z.string(),
   REDIS_URL: z.string().default('redis://localhost:6379'),
   LLM_PROVIDER: z.enum(['anthropic', 'openai', 'mock']).default('mock'),
+  EMBEDDING_PROVIDER: z.enum(['openai', 'mock']).default('mock'),
+  EMBEDDING_MODEL: z.string().default('text-embedding-3-small'),
+  TWILIO_AUTH_TOKEN: z.string().optional(),
+  WEBHOOK_SECRET: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

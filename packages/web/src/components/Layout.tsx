@@ -1,6 +1,8 @@
 import { NavLink, Outlet } from 'react-router-dom';
+import { useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth';
-import { useWebSocket } from '../hooks/useWebSocket';
+import { useWebSocket, type WsEvent } from '../hooks/useWebSocket';
 import {
   LayoutDashboard,
   Inbox,
@@ -27,7 +29,22 @@ const nav = [
 export function Layout() {
   const { user, tenants, logout } = useAuth();
   const tenantId = tenants[0]?.tenantId ?? null;
-  const { connected } = useWebSocket(localStorage.getItem('pma_token'), tenantId);
+  const { connected, events } = useWebSocket(localStorage.getItem('pma_token'), tenantId);
+  const qc = useQueryClient();
+
+  // Live dashboard: on any state-changing WS event, invalidate cached queries
+  // (debounced so bursts from the worker collapse into one refetch).
+  const processed = useRef<WsEvent | null>(null);
+  useEffect(() => {
+    const latest = events[0];
+    if (!latest) return;
+    if (processed.current === latest) return;
+    processed.current = latest;
+    const timer = setTimeout(() => {
+      qc.invalidateQueries();
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [events, qc]);
 
   return (
     <div className="flex h-screen">

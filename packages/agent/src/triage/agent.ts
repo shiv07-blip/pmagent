@@ -65,6 +65,7 @@ export async function runTriage(opts: RunTriageOpts): Promise<TriageOutcome> {
       ticketText: opts.triggerText,
       requestId: ctx.requestId,
       tenantId: ctx.tenantId,
+      images: ctx.photos,
     });
     classification = cls.classification;
     await services.recordLlmRun({
@@ -109,6 +110,7 @@ export async function runTriage(opts: RunTriageOpts): Promise<TriageOutcome> {
         {
           role: 'user',
           content: `Triage this request. Last inbound message: ${opts.triggerText}`,
+          images: ctx.photos,
         },
       ],
       tools: ACTION_TOOLS.map((t) => ({

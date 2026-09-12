@@ -1,8 +1,10 @@
+import { createTransport, type Transporter } from 'nodemailer';
+import type { NotifyKind } from '@pma/core';
 import { ENV } from '../env.js';
 
 export interface NotifyRequest {
-  kind: 'oncall_escalation' | 'pm_alert' | 'resident_sms' | 'resident_email';
-  to: string; // phone (E.164) or email
+  kind: NotifyKind;
+  to: string; // phone (E.164), email, or tg:CHAT_ID
   body: string;
   subject?: string;
 }
@@ -23,6 +25,7 @@ export async function notify(req: NotifyRequest): Promise<NotifyResult> {
     case 'telegram':
       return notifyTelegram(req);
     case 'smtp':
+      return notifySmtp(req);
     case 'http':
       return notifyHttp(req);
     case 'console':
@@ -59,6 +62,36 @@ async function notifyTwilio(req: NotifyRequest): Promise<NotifyResult> {
     return { ok: true, provider: 'twilio' };
   } catch (err) {
     return { ok: false, provider: 'twilio', detail: String(err) };
+  }
+}
+
+async function notifySmtp(req: NotifyRequest): Promise<NotifyResult> {
+  const url = ENV.SMTP_URL;
+  const from = ENV.SMTP_FROM ?? 'pmagent@localhost';
+  if (!url) return notifyConsole(req);
+
+  // System-level alerts (pm_alert / oncall_escalation) go to the operator inbox
+  // even when `to` holds a phone number; resident comms use their own address.
+  const viaOperator = req.kind === 'pm_alert' || req.kind === 'oncall_escalation';
+  const to = viaOperator ? (ENV.SMTP_TO ?? req.to) : req.to;
+  if (!to) return { ok: false, provider: 'smtp', detail: 'No recipient address' };
+
+  let transporter: Transporter;
+  try {
+    transporter = createTransport(url);
+  } catch (err) {
+    return { ok: false, provider: 'smtp', detail: String(err) };
+  }
+  try {
+    const info = await transporter.sendMail({
+      from,
+      to,
+      subject: req.subject ?? `PMAgent: ${req.kind}`,
+      text: req.body,
+    });
+    return { ok: true, provider: 'smtp', detail: String(info.messageId ?? '') };
+  } catch (err) {
+    return { ok: false, provider: 'smtp', detail: String(err) };
   }
 }
 

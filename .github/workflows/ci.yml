@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  test:
+    name: Typecheck, build & test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      CI: "true"
+      # Unit test paths never touch Docker; integration tests read these when
+      # RUN_INTEGRATION is set after `docker compose up`.
+      MIGRATE_DATABASE_URL: postgres://pmagent:pmagent@localhost:5432/pmagent
+      WORKER_DATABASE_URL: postgres://pmagent_worker:pmagent_worker@localhost:5432/pmagent
+      API_DATABASE_URL: postgres://pmagent_api:pmagent_api@localhost:5432/pmagent
+      REDIS_URL: redis://localhost:6379
+      LLM_PROVIDER: mock
+      EMBEDDING_PROVIDER: mock
+      NOTIFY_PROVIDER: console
+      SMTP_TO: oncall@acme.example
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: pmagent
+          POSTGRES_PASSWORD: pmagent
+          POSTGRES_DB: pmagent
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pmagent -d pmagent"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+          --volume ${{ github.workspace }}/infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Integration tests (Postgres RLS + worker pipeline)
+        env:
+          RUN_INTEGRATION: "1"
+        run: |
+          npm --workspace @pma/db test
+          npm --workspace @pma/worker test

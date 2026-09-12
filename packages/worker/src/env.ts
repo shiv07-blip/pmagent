@@ -14,8 +14,16 @@ const envSchema = z.object({
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_FROM_NUMBER: z.string().optional(),
   NOTIFY_HTTP_URL: z.string().optional(),
+  SMTP_URL: z.string().optional(),
   SMTP_FROM: z.string().optional(),
+  SMTP_TO: z.string().optional(),
   AGENT_CONCURRENCY: z.coerce.number().int().min(1).default(8),
+  EMBEDDING_PROVIDER: z.enum(['openai', 'mock']).default('mock'),
+  EMBEDDING_MODEL: z.string().default('text-embedding-3-small'),
+  STALL_CHECK_INTERVAL_MIN: z.coerce.number().int().min(1).default(15),
+  STALL_AGE_MIN: z.coerce.number().int().min(1).default(1440),
+  STALL_MAX: z.coerce.number().int().min(0).default(2),
+  PUBLIC_BASE_URL: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -25,16 +25,16 @@ export async function registerAuditRoutes(app: FastifyInstance): Promise<void> {
       const [agg] = await db
         .select({
           runs: sql<number>`count(*)::int`,
-          costUsd: sql<number>`coalesce(sum(${llmRuns.costUsd}), 0)`,
-          promptTokens: sql<number>`coalesce(sum(${llmRuns.promptTokens}), 0)`,
-          completionTokens: sql<number>`coalesce(sum(${llmRuns.completionTokens}), 0)`,
-          p95LatencyMs: sql<number>`percentile_cont(0.95) within group (order by ${llmRuns.latencyMs})`,
+          costUsd: sql<number>`coalesce(sum(${llmRuns.costUsd}), 0)::float8`,
+          promptTokens: sql<number>`coalesce(sum(${llmRuns.promptTokens}), 0)::int`,
+          completionTokens: sql<number>`coalesce(sum(${llmRuns.completionTokens}), 0)::int`,
+          p95LatencyMs: sql<number>`coalesce(percentile_cont(0.95) within group (order by ${llmRuns.latencyMs}), 0)::int`,
         })
         .from(llmRuns)
         .where(sql`${llmRuns.createdAt} >= ${monthStart}`);
 
       const byModel = await db
-        .select({ model: llmRuns.model, runs: sql<number>`count(*)::int`, costUsd: sql<number>`coalesce(sum(${llmRuns.costUsd}),0)` })
+        .select({ model: llmRuns.model, runs: sql<number>`count(*)::int`, costUsd: sql<number>`coalesce(sum(${llmRuns.costUsd}),0)::float8` })
         .from(llmRuns)
         .where(sql`${llmRuns.createdAt} >= ${monthStart}`)
         .groupBy(llmRuns.model);

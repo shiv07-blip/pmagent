@@ -18,6 +18,8 @@ export interface ClassifyOpts {
   ticketText: string;
   requestId: string;
   tenantId: string;
+  /** image URLs attached to the ticket, passed to vision-capable providers */
+  images?: string[];
 }
 
 /** Phase A: single structured classification call (JSON mode). */
@@ -36,7 +38,7 @@ export async function classifyTicket(opts: ClassifyOpts): Promise<ClassifyResult
           '\n\nClassify the maintenance request. Respond ONLY with JSON matching this schema:\n' +
           JSON.stringify(classificationShape()),
       },
-      { role: 'user', content: ticketText },
+      { role: 'user', content: ticketText, images: opts.images },
     ],
   });
 

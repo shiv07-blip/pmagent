@@ -11,6 +11,8 @@ export interface RequestContext {
   source: string;
   subject?: string;
   status: string;
+  /** image URLs attached to the latest inbound message (vision-enabled) */
+  photos: string[];
   unit: {
     id: string;
     unitNumber: string;

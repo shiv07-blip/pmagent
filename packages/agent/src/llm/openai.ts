@@ -7,6 +7,21 @@ import { estimateCost, LLMError, type LLMCompleteOpts, type LLMProvider, type LL
 
 const API = 'https://api.openai.com/v1/chat/completions';
 
+type OpenAIEdgeMessage = { role: string; content: string | unknown[] };
+
+/** OpenAI expects content as a string or an array of text/image_url blocks.
+ * Map our `images` field accordingly and strip unknown fields. */
+function openaiContent(m: { role: string; content: string; images?: string[] }): OpenAIEdgeMessage {
+  if (!m.images?.length) return { role: m.role, content: m.content };
+  const content: unknown[] = [
+    { type: 'text', text: m.content },
+  ];
+  for (const url of m.images) {
+    content.push({ type: 'image_url', image_url: { url } });
+  }
+  return { role: m.role, content };
+}
+
 export class OpenAIProvider implements LLMProvider {
   readonly providerName = 'openai';
   constructor(
@@ -21,7 +36,7 @@ export class OpenAIProvider implements LLMProvider {
       model: this.model,
       temperature: opts.temperature ?? 0,
       max_tokens: opts.maxTokens ?? 4096,
-      messages: opts.messages,
+      messages: opts.messages.map(openaiContent),
     };
     if (opts.tools?.length) {
       body.tools = opts.tools.map((t) => ({

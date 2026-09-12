@@ -52,6 +52,14 @@ export async function registerDashboardRoutes(app: FastifyInstance): Promise<voi
         })
         .from(maintenanceRequests);
 
+      const [csat] = await db
+        .select({
+          avgScore: sql<number>`coalesce(avg(${maintenanceRequests.csatScore}), 0)::float`,
+          responses: sql<number>`count(${maintenanceRequests.csatScore})::int`,
+        })
+        .from(maintenanceRequests)
+        .where(sql`${maintenanceRequests.csatScore} is not null`);
+
       const recentActivity = await db
         .select({
           action: requestAuditLog.action,
@@ -84,6 +92,10 @@ export async function registerDashboardRoutes(app: FastifyInstance): Promise<voi
         },
         sla: {
           unacked_24h: sla?.unacked24h ?? 0,
+        },
+        csat: {
+          avg_score: Math.round((csat?.avgScore ?? 0) * 10) / 10,
+          responses: csat?.responses ?? 0,
         },
         recent_activity: recentActivity,
         recent_requests: recentRequests,

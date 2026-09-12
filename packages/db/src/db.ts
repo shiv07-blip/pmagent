@@ -43,6 +43,15 @@ export function workerPool(): Pool {
   return _workerPool;
 }
 
+export async function closePools(): Promise<void> {
+  await Promise.allSettled([
+    _apiPool ? _apiPool.end() : Promise.resolve(),
+    _workerPool ? _workerPool.end() : Promise.resolve(),
+  ]);
+  _apiPool = undefined;
+  _workerPool = undefined;
+}
+
 export type Db = NodePgDatabase<typeof schema>;
 export const tables = schema;
 

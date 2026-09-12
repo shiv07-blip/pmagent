@@ -1,8 +1,8 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { AppError } from '@pma/core';
-import type { AgentJobData, TenantConfig } from '@pma/core';
+import type { AgentJobData, NotifyKind, TenantConfig } from '@pma/core';
 import { notFound } from '@pma/core';
-import type { LLMProvider, RequestContext, TriageOutcome } from '@pma/agent';
+import type { EmbeddingProvider, LLMProvider, RequestContext, TriageOutcome } from '@pma/agent';
 import { runTriage } from '@pma/agent';
 import { leases, maintenanceRequests, properties, requestMessages, residents, tenants, units, workOrders, workerDb } from '@pma/db';
 import type { Db } from '@pma/db';
@@ -22,13 +22,14 @@ const DEFAULT_CONFIG: TenantConfig = {
 export interface ProcessAgentOpts {
   data: AgentJobData;
   provider: LLMProvider;
+  embedder: EmbeddingProvider;
   notifyQueue: Queue;
   budgetLimitUsd: number;
   publish: (ev: PlatformEvent) => void;
 }
 
 export async function processAgent(opts: ProcessAgentOpts): Promise<TriageOutcome> {
-  const { data, provider, notifyQueue, budgetLimitUsd, publish } = opts;
+  const { data, provider, embedder, notifyQueue, budgetLimitUsd, publish } = opts;
   const db = workerDb();
 
   const ctx = await loadRequestContext(db, data.requestId);
@@ -40,13 +41,14 @@ export async function processAgent(opts: ProcessAgentOpts): Promise<TriageOutcom
     .where(eq(maintenanceRequests.id, ctx.requestId));
 
   const enqueueNotify = async (
-    kind: 'oncall_escalation' | 'pm_alert' | 'resident_sms' | 'resident_email',
+    kind: NotifyKind,
     payload: Record<string, unknown>,
+    optsExtra?: { delayMs?: number },
   ): Promise<void> => {
     await notifyQueue.add(
       `notify_${crypto.randomUUID()}`,
       { tenantId: ctx.tenantId, kind, payload },
-      { removeOnComplete: 1000, removeOnFail: 1000 },
+      { removeOnComplete: 1000, removeOnFail: 1000, delay: optsExtra?.delayMs },
     );
   };
 
@@ -54,6 +56,7 @@ export async function processAgent(opts: ProcessAgentOpts): Promise<TriageOutcom
     db,
     ctx,
     provider,
+    embedder,
     budgetLimitUsd,
     publish,
     enqueueNotify,
@@ -110,6 +113,7 @@ export async function loadRequestContext(db: Db, requestId: string): Promise<Req
     subject: req.subject ?? undefined,
     source: req.source,
     status: req.status,
+    photos: (req.photos as string[] | null) ?? [],
     unit: {
       id: unit.id,
       unitNumber: unit.unitNumber,

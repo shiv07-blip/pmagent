@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from 'fastify';
+import { Readable } from 'node:stream';
 import { AppError } from '@pma/core';
 import { ping } from '@pma/db';
 import { registerAuth } from './auth.js';
@@ -17,6 +18,10 @@ import { registerWebhookRoutes } from './routes/webhooks.js';
 import { registerWorkOrderRoutes } from './routes/workorders.js';
 import { registerDashboardRoutes } from './routes/dashboard.js';
 import { registerTelegramRoutes } from './routes/telegram.js';
+import { registerPolicyRoutes } from './routes/policies.js';
+import { registerVendorWebhookRoutes } from './routes/vendor.js';
+import { registerMetricsRoute } from './routes/metrics.js';
+import { recordHttpRequest } from './metrics.js';
 import { registerWs } from './ws.js';
 
 export interface AppDeps {
@@ -44,6 +49,18 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   });
   await app.register(import('@fastify/formbody'));
 
+  // Capture the raw request body so webhooks can verify HMAC/Twilio signatures.
+  app.addHook('preParsing', (req, _reply, payload, done) => {
+    const chunks: Buffer[] = [];
+    payload.on('data', (c: Buffer) => chunks.push(c));
+    payload.on('end', () => {
+      const raw = Buffer.concat(chunks);
+      (req as unknown as { rawBody: Buffer }).rawBody = raw;
+      done(null, Readable.from([raw]));
+    });
+    payload.on('error', done);
+  });
+
   app.addHook('onRequest', async (req, reply) => {
     if (req.url === '/healthz') return;
     const key = req.ip;
@@ -51,6 +68,11 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       const rl = rateLimitResponse();
       reply.code(rl.code).send({ error: rl.error, message: rl.message });
     }
+  });
+
+  app.addHook('onResponse', async (req, reply) => {
+    const ms = reply.elapsedTime;
+    recordHttpRequest(req.method, req.routeOptions?.url ?? req.url.split('?')[0]!, reply.statusCode, ms);
   });
 
   await registerAuth(app);
@@ -67,6 +89,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await app.register(registerDashboardRoutes);
   await app.register(registerTelegramRoutes);
   await app.register(registerWebhookRoutes);
+  await app.register(registerPolicyRoutes);
+  await app.register(registerVendorWebhookRoutes);
+  await app.register(registerMetricsRoute);
 
   app.get('/healthz', async () => {
     await ping();

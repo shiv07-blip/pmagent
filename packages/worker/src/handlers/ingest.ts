@@ -1,4 +1,4 @@
-import { and, desc, eq, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm';
 import { AppError, sanitizeJobId } from '@pma/core';
 import type { IngestJobData } from '@pma/core';
 import {
@@ -44,6 +44,38 @@ export async function processIngest(data: IngestJobData, agentQueue: Queue, publ
   const inserted = await insertMessage(db, data, request.id, publish);
   if (!inserted) {
     return; // duplicate inbound message — already processed
+  }
+
+  // CSAT: a lone 1–5 reply on a completed request is a survey answer, not a
+  // new maintenance issue — record it and do not spin up the agent.
+  const csat = parseCsat(data.body);
+  const csatMatch = (csat !== null ? openRequest[0] : undefined);
+  if (csatMatch) {
+    const scored = await db
+      .update(maintenanceRequests)
+      .set({ csatScore: csat })
+      .where(and(
+        eq(maintenanceRequests.id, csatMatch.id),
+        isNull(maintenanceRequests.csatScore),
+        sql`${maintenanceRequests.csatAskedAt} is not null`,
+      ))
+      .returning({ id: maintenanceRequests.id });
+    if (scored.length > 0) {
+      await db.insert(requestAuditLog).values({
+        tenantId: data.tenantId,
+        requestId: scored[0]!.id,
+        action: 'csat',
+        actorType: 'resident',
+        details: { score: csat } as never,
+      });
+      publish({
+        tenantId: data.tenantId,
+        type: 'request.csat',
+        data: { requestId: scored[0]!.id, score: csat },
+        at: new Date().toISOString(),
+      });
+      return;
+    }
   }
 
   await db.insert(requestAuditLog).values({
@@ -178,4 +210,12 @@ async function insertMessage(db: Db, data: IngestJobData, requestId: string, pub
     at: new Date().toISOString(),
   });
   return true;
+}
+
+/** Recognizes a CSAT score reply: exactly one digit in 1..5. */
+function parseCsat(body: string): number | null {
+  const trimmed = body.trim();
+  if (!/^\d{1}$/.test(trimmed)) return null;
+  const n = parseInt(trimmed, 10);
+  return n >= 1 && n <= 5 ? n : null;
 }

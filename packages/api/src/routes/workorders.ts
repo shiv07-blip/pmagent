@@ -6,7 +6,7 @@ import { workOrderEvents, workOrders } from '@pma/db';
 import { tx } from '../auth.js';
 
 const statusSchema = z.object({
-  status: z.enum(['proposed', 'assigned', 'in_progress', 'completed', 'cancelled']),
+  status: z.enum(['proposed', 'assigned', 'accepted', 'rejected', 'in_progress', 'completed', 'cancelled']),
   scheduledAt: z.string().datetime().optional(),
   actualCostCents: z.number().int().min(0).optional(),
   notes: z.string().optional(),
@@ -18,7 +18,9 @@ const approveSchema = z.object({
 
 const TRANSITIONS: Record<string, string[]> = {
   proposed: ['assigned', 'cancelled'],
-  assigned: ['in_progress', 'cancelled'],
+  assigned: ['accepted', 'rejected', 'in_progress', 'cancelled'],
+  accepted: ['scheduled', 'in_progress', 'cancelled'],
+  rejected: ['assigned', 'cancelled'],
   in_progress: ['completed', 'cancelled'],
   completed: [],
   cancelled: [],

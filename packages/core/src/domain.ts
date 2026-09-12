@@ -103,6 +103,11 @@ export interface TenantChannelConfig {
   enabled: boolean;
 }
 
+export interface OncallContact {
+  phone?: string;
+  email?: string;
+}
+
 export interface TenantConfig {
   /** USD threshold above which vendor estimates need owner approval */
   ownerApprovalThresholdUsd: number;
@@ -115,6 +120,10 @@ export interface TenantConfig {
   channels: TenantChannelConfig[];
   /** tenant-specific free-text emergency keywords appended to defaults */
   emergencyKeywords: string[];
+  /** after this many hours a completed request triggers a CSAT survey */
+  csatDelayHours?: number;
+  /** where on-call escalations / pm alerts reach a human */
+  oncall?: OncallContact;
 }
 
 export interface MaintenanceRequestView {

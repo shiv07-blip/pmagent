@@ -24,10 +24,12 @@
     "bullmq": "^5.34.0",
     "dotenv": "^16.4.7",
     "ioredis": "^5.4.2",
+    "nodemailer": "^6.9.16",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@types/nodemailer": "^6.4.17",
     "vitest": "^2.1.8"
   }
 }

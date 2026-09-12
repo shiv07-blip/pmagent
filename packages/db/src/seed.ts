@@ -1,4 +1,4 @@
-import { loadRootEnv } from '@pma/core';
+import { loadRootEnv, embeddingLiteral } from '@pma/core';
 import { withServiceClient } from './db.js';
 import { migrate } from './migrate.js';
 
@@ -13,6 +13,9 @@ loadRootEnv();
  */
 export async function seed(): Promise<void> {
   await migrate();
+
+  const policyText =
+    'Tenants are responsible for clogged drains caused by misuse, replacing light bulbs, and damage from appliance misuse. The landlord maintains structural systems, plumbing leaks, HVAC, and appliances in working order.';
 
   const seedSql = `
   DO $$
@@ -39,7 +42,8 @@ export async function seed(): Promise<void> {
         "preferredVendorIds": [],
         "ackSlaMinutes": 60,
         "emergencyKeywords": ["gas leak","burst pipe","no heat","flooding","smoke","fire","electrical fire","no hot water"],
-        "channels": [{"channel":"sms","from":"+15551230000","enabled":true}]
+        "channels": [{"channel":"sms","from":"+15551230000","enabled":true}],
+        "oncall": {"phone":"+12225550100","email":"oncall@acme.example"}
       }'::jsonb)
       RETURNING id INTO v_tenant;
 
@@ -88,13 +92,13 @@ export async function seed(): Promise<void> {
       VALUES (v_tenant, 'Shockproof Electric', ARRAY['electrical']::trade[], '{"zips":["62704","62702"]}', '+12175550103', 'hello@shockproof.example', 15000, true, false)
       RETURNING id INTO v_electrician;
 
-      -- Policy doc placeholder (no embeddings yet) ------------------------------
+      -- Policy doc with real (deterministic) embeddings -----------------------
       INSERT INTO policy_documents (tenant_id, name, doc_type, status)
       VALUES (v_tenant, 'Maintenance Policy', 'policy', 'ready');
       INSERT INTO policy_chunks (tenant_id, document_id, chunk_index, content, embedding)
       VALUES (v_tenant, (SELECT id FROM policy_documents WHERE tenant_id = v_tenant LIMIT 1), 0,
-              'Tenants are responsible for clogged drains caused by misuse, replacing light bulbs, and damage from appliance misuse. The landlord maintains structural systems, plumbing leaks, HVAC, and appliances in working order.',
-              (array_fill(0, ARRAY[1536])::float[])::vector);
+              '${policyText.replace(/'/g, "''")}',
+              ${embeddingLiteral(policyText)}::vector);
     END IF;
   END $$;
   `;

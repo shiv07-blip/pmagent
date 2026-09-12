@@ -1,12 +1,14 @@
 import { Queue, Worker } from 'bullmq';
 import { Redis } from 'ioredis';
-import { createProvider } from '@pma/agent';
+import { createEmbedder, createProvider } from '@pma/agent';
 import { loadRootEnv } from '@pma/core';
 import { initEnv, ENV } from './env.js';
 import { processAgent } from './handlers/agent.js';
 import { processIngest } from './handlers/ingest.js';
 import { processNotify } from './handlers/notify.js';
+import { processPolicyEmbed } from './handlers/policy.js';
 import { checkSlaBreaches } from './handlers/sla.js';
+import { checkStalledRequests } from './handlers/stalled.js';
 import { createPublisher } from './pubsub.js';
 
 loadRootEnv();
@@ -17,9 +19,11 @@ async function main(): Promise<void> {
   const publisher = createPublisher(ENV.REDIS_URL);
   const emit = (ev: Parameters<typeof publisher.publish>[0]) => publisher.publish(ev);
   const provider = createProvider({ model: ENV.LLM_MODEL });
+  const embedder = createEmbedder({ model: ENV.EMBEDDING_MODEL });
 
   const agentQueue = new Queue('agent', { connection });
   const notifyQueue = new Queue('notify', { connection });
+  const policyQueue = new Queue('policy', { connection });
 
   const ingestWorker = new Worker(
     'ingest',
@@ -35,6 +39,7 @@ async function main(): Promise<void> {
       await processAgent({
         data: job.data,
         provider,
+        embedder,
         notifyQueue,
         budgetLimitUsd: ENV.LLM_TENANT_MONTHLY_BUDGET_USD,
         publish: emit,
@@ -51,10 +56,19 @@ async function main(): Promise<void> {
     { connection, concurrency: 4 },
   );
 
+  const policyWorker = new Worker(
+    'policy',
+    async (job) => {
+      await processPolicyEmbed(job.data, embedder);
+    },
+    { connection, concurrency: 2 },
+  );
+
   for (const [name, w] of [
     ['ingest', ingestWorker],
     ['agent', agentWorker],
     ['notify', notifyWorker],
+    ['policy', policyWorker],
   ] as const) {
     w.on('failed', (job, err) => {
       console.error(`[pma-worker] ${name} job failed`, job?.id, err.message);
@@ -63,13 +77,16 @@ async function main(): Promise<void> {
 
   const shutdown = async () => {
     clearInterval(slaTimer);
+    clearInterval(stallTimer);
     console.log('[pma-worker] shutting down');
     await Promise.allSettled([
       ingestWorker.close(),
       agentWorker.close(),
       notifyWorker.close(),
+      policyWorker.close(),
       agentQueue.close(),
       notifyQueue.close(),
+      policyQueue.close(),
       publisher.close(),
       connection.quit(),
     ]);
@@ -111,6 +128,25 @@ async function main(): Promise<void> {
 
   const slaTimer = setInterval(slaCheck, 5 * 60 * 1000);
   slaCheck();
+
+  const stallCheck = async () => {
+    try {
+      const db = (await import('@pma/db')).workerDb();
+      const count = await checkStalledRequests({
+        db,
+        agentQueue,
+        emit,
+        staleAgeMs: ENV.STALL_AGE_MIN * 60 * 1000,
+        maxCount: ENV.STALL_MAX,
+      });
+      if (count > 0) console.log(`[stalled] nudge/escalated ${count} stale request(s)`);
+    } catch (err) {
+      console.error('[stalled] check failed', err);
+    }
+  };
+
+  const stallTimer = setInterval(stallCheck, ENV.STALL_CHECK_INTERVAL_MIN * 60 * 1000);
+  stallCheck();
 }
 
 main().catch((err) => {

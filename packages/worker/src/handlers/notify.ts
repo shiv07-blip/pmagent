@@ -18,6 +18,15 @@ export async function processNotify(data: NotifyJobData): Promise<void> {
     case 'resident_email':
       await notify({ kind: data.kind, to: String(p.to), subject: String(p.subject ?? ''), body: String(p.body) });
       break;
+    case 'resident_telegram':
+      await notify({ kind: data.kind, to: String(p.to), body: String(p.body) });
+      break;
+    case 'vendor_sms':
+      await notify({ kind: data.kind, to: String(p.to), body: String(p.body) });
+      break;
+    case 'vendor_email':
+      await notify({ kind: data.kind, to: String(p.to), subject: String(p.subject ?? 'New vendor dispatch'), body: String(p.body) });
+      break;
     case 'pm_alert':
       await notify({ kind: data.kind, to: String(p.to ?? ''), subject: String(p.subject ?? ''), body: String(p.body ?? '') });
       break;

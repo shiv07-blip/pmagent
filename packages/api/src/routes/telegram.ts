@@ -4,6 +4,8 @@ import { validation } from '@pma/core';
 import { workerDb, tenants } from '@pma/db';
 import { eq, sql } from 'drizzle-orm';
 import { enqueueIngest, type IngestJobData } from '../queue.js';
+import { ENV } from '../env.js';
+import { requireValidWebhook } from '../webhookAuth.js';
 
 const telegramUpdateSchema = z.object({
   update_id: z.number(),
@@ -25,6 +27,9 @@ const telegramUpdateSchema = z.object({
 
 export async function registerTelegramRoutes(app: FastifyInstance): Promise<void> {
   app.post('/webhooks/telegram', async (req, reply) => {
+    const ok = await requireValidWebhook(req, reply, { secret: ENV.WEBHOOK_SECRET });
+    if (!ok) return;
+
     const parsed = telegramUpdateSchema.safeParse(req.body);
     if (!parsed.success) throw validation('Malformed Telegram update', parsed.error.issues);
 

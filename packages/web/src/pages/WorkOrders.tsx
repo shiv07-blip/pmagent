@@ -5,7 +5,8 @@ import { CheckCircle, XCircle, Clock } from 'lucide-react';
 
 const TRANSITIONS: Record<string, string[]> = {
   proposed: ['assigned', 'cancelled'],
-  assigned: ['in_progress', 'cancelled'],
+  assigned: ['in_progress', 'cancelled'], // auto-dispatch moves assigned → accepted/rejected via vendor link
+  accepted: ['in_progress', 'cancelled'],
   in_progress: ['completed', 'cancelled'],
 };
 

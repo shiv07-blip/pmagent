@@ -4,6 +4,7 @@ import {
   uuid,
   text,
   integer,
+  smallint,
   jsonb,
   timestamp,
   boolean,
@@ -97,6 +98,7 @@ export const auditActionEnum = pgEnum('audit_action', [
   'resolve_first_touch',
   'human_confirm',
   'info_requested',
+  'csat',
 ]);
 
 export const docTypeEnum = pgEnum('doc_type', ['policy', 'lease', 'faq']);
@@ -121,6 +123,7 @@ export const tenants = pgTable(
       .notNull()
       .default('0'),
     billingMonth: text('billing_month'),
+    llmBudgetAlertSent: boolean('llm_budget_alert_sent').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -284,6 +287,10 @@ export const maintenanceRequests = pgTable(
     summary: text('summary'),
     aiNotes: jsonb('ai_notes').notNull().default({}),
     photos: jsonb('photos').notNull().default([]),
+    csatScore: smallint('csat_score'),
+    csatAskedAt: timestamp('csat_asked_at', { withTimezone: true }),
+    stalledCount: integer('stalled_count').notNull().default(0),
+    lastStalledCheck: timestamp('last_stalled_check', { withTimezone: true }),
     firstAckAt: timestamp('first_ack_at', { withTimezone: true }),
     closedAt: timestamp('closed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -337,6 +344,9 @@ export const workOrders = pgTable(
     scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
     slaResponseMinutes: integer('sla_response_minutes'),
     notes: text('notes'),
+    dispatchToken: text('dispatch_token'),
+    dispatchedAt: timestamp('dispatched_at', { withTimezone: true }),
+    vendorResponse: text('vendor_response'),
     completedAt: timestamp('completed_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -345,6 +355,7 @@ export const workOrders = pgTable(
     index('work_orders_tenant_idx').on(t.tenantId),
     index('work_orders_request_idx').on(t.requestId),
     index('work_orders_vendor_idx').on(t.vendorId),
+    index('work_orders_dispatch_token_idx').on(t.dispatchToken).where(sql`${t.dispatchToken} is not null`),
   ],
 );
 

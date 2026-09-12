@@ -58,6 +58,7 @@ class ApiClient {
       requests: { open: number; new: number; triaging: number; awaitingInfo: number; workOrderCreated: number; escalated: number; completed: number; closed: number; total: number };
       work_orders: { proposed: number; assigned: number; inProgress: number; completed: number; cancelled: number; totalCostCents: number; estCostCents: number; total: number };
       sla: { unacked_24h: number };
+      csat: { avg_score: number; responses: number };
       recent_activity: Array<{ action: string; requestId: string; details: Record<string, unknown>; createdAt: string }>;
       recent_requests: Array<{ id: string; status: string; urgency: string | null; category: string | null; createdAt: string }>;
     }>('/dashboard');

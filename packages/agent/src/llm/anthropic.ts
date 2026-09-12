@@ -8,6 +8,19 @@ import { estimateCost, LLMError, type LLMCompleteOpts, type LLMProvider, type LL
 
 const API = 'https://api.anthropic.com/v1/messages';
 
+type AnthropicContent = string | Array<{ type: string; text?: string; source?: { type: string; url?: string } }>;
+
+function anthropicContent(m: { content: string; images?: string[] }): AnthropicContent {
+  if (!m.images?.length) return m.content;
+  const blocks: Array<{ type: string; text?: string; source?: { type: string; url?: string } }> = [
+    { type: 'text', text: m.content },
+  ];
+  for (const url of m.images) {
+    blocks.push({ type: 'image', source: { type: 'url', url } });
+  }
+  return blocks;
+}
+
 export class AnthropicProvider implements LLMProvider {
   readonly providerName = 'anthropic';
   constructor(
@@ -21,7 +34,10 @@ export class AnthropicProvider implements LLMProvider {
     const system = opts.messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
     const messages = opts.messages
       .filter((m) => m.role !== 'system')
-      .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+      .map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: anthropicContent(m),
+      }));
 
     const body: Record<string, unknown> = {
       model: this.model,

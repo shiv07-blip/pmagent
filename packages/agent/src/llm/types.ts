@@ -6,6 +6,8 @@
 export interface LLMMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
+  /** image URLs to attach to this message (vision-capable providers only) */
+  images?: string[];
 }
 
 export interface LLMTool {
@@ -61,6 +63,14 @@ export class LLMError extends Error {
     this.name = 'LLMError';
     this.retryable = opts.retryable ?? true;
   }
+}
+
+/** Produces embedding vectors for RAG policy search. */
+export interface EmbeddingProvider {
+  readonly providerName: string;
+  readonly model: string;
+  /** Returns a normalized embedding vector for the given text. */
+  embed(text: string): Promise<number[]>;
 }
 
 /** Default token pricing table (USD). Providers may override via costFn. */

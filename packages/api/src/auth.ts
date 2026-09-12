@@ -69,11 +69,11 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
     };
   });
 
-  app.decorate('requireRole', (role: Role) => {
+  app.decorate('requireRole', (min: Role) => {
     return async (req: FastifyRequest, reply: FastifyReply) => {
-      const allowed = ['owner', 'admin'];
-      if (!req.ctx || !allowed.includes(req.ctx.role)) {
-        reply.code(403).send({ error: 'FORBIDDEN', message: `Requires ${role}` });
+      const level = (role: Role): number => ({ owner: 4, admin: 3, agent: 2, readonly: 1 })[role];
+      if (!req.ctx || level(req.ctx.role) < level(min)) {
+        reply.code(403).send({ error: 'FORBIDDEN', message: `Requires ${min} role or higher` });
       }
     };
   });

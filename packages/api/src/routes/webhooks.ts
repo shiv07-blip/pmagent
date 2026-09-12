@@ -1,9 +1,12 @@
+import { createHash } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import { validation } from '@pma/core';
 import { workerDb } from '@pma/db';
 import { createQueues, enqueueIngest, type IngestJobData } from '../queue.js';
+import { ENV } from '../env.js';
+import { requireValidWebhook } from '../webhookAuth.js';
 
 const smsSchema = z.object({
   MessageSid: z.string(),
@@ -54,6 +57,12 @@ export async function registerWebhookRoutes(app: FastifyInstance): Promise<void>
   const db = workerDb();
 
   app.post('/webhooks/sms', async (req, reply) => {
+    const ok = await requireValidWebhook(req, reply, {
+      isTwilio: true,
+      twilioAuthToken: ENV.TWILIO_AUTH_TOKEN,
+    });
+    if (!ok) return;
+
     const body = smsSchema.safeParse(req.body);
     if (!body.success) throw validation('Malformed SMS webhook', body.error.issues);
 
@@ -77,6 +86,9 @@ export async function registerWebhookRoutes(app: FastifyInstance): Promise<void>
   });
 
   app.post('/webhooks/email', async (req, reply) => {
+    const ok = await requireValidWebhook(req, reply, { secret: ENV.WEBHOOK_SECRET });
+    if (!ok) return;
+
     const body = emailSchema.safeParse(req.body);
     if (!body.success) throw validation('Malformed email webhook', body.error.issues);
     const fromAddr = body.data.From.toLowerCase();
@@ -102,6 +114,9 @@ export async function registerWebhookRoutes(app: FastifyInstance): Promise<void>
   });
 
   app.post('/webhooks/portal', async (req, reply) => {
+    const ok = await requireValidWebhook(req, reply, { secret: ENV.WEBHOOK_SECRET });
+    if (!ok) return;
+
     const body = portalSchema.safeParse(req.body);
     if (!body.success) throw validation('Malformed portal webhook', body.error.issues);
 
@@ -122,6 +137,9 @@ export async function registerWebhookRoutes(app: FastifyInstance): Promise<void>
   });
 
   app.post('/webhooks/msg91', async (req, reply) => {
+    const ok = await requireValidWebhook(req, reply, { secret: ENV.WEBHOOK_SECRET });
+    if (!ok) return;
+
     const body = msg91Schema.safeParse(req.body);
     if (!body.success) throw validation('Malformed MSG91 webhook', body.error.issues);
 
@@ -137,7 +155,9 @@ export async function registerWebhookRoutes(app: FastifyInstance): Promise<void>
     }
 
     const job: IngestJobData = {
-      dedupeKey: `msg91:${body.data.number}:${Date.now()}`,
+      // MSG91 does not always include a delivery id — derive a stable one from
+      // number+message so redeliveries dedupe instead of creating duplicates.
+      dedupeKey: `msg91:${normalizePhone(body.data.number)}:${hashString(body.data.message).slice(0, 24)}`,
       tenantId: tenant.id,
       channel: 'sms',
       senderRef: normalizePhone(body.data.number),
@@ -151,6 +171,9 @@ export async function registerWebhookRoutes(app: FastifyInstance): Promise<void>
   });
 
   app.post('/webhooks/msg91/json', async (req, reply) => {
+    const ok = await requireValidWebhook(req, reply, { secret: ENV.WEBHOOK_SECRET });
+    if (!ok) return;
+
     const body = msg91JsonSchema.safeParse(req.body);
     if (!body.success) throw validation('Malformed MSG91 JSON webhook', body.error.issues);
 
@@ -161,7 +184,7 @@ export async function registerWebhookRoutes(app: FastifyInstance): Promise<void>
     }
 
     const job: IngestJobData = {
-      dedupeKey: `msg91:${body.data.requestId ?? crypto.randomUUID()}`,
+      dedupeKey: `msg91:${body.data.requestId ?? hashString(`${toNumber}${body.data.customerNumber}${body.data.text}`).slice(0, 24)}`,
       tenantId: tenant.id,
       channel: 'sms',
       senderRef: normalizePhone(body.data.customerNumber),
@@ -173,6 +196,10 @@ export async function registerWebhookRoutes(app: FastifyInstance): Promise<void>
     await enqueueIngest(app.queues.ingest, job);
     return reply.code(202).send({ accepted: true, jobId: job.dedupeKey });
   });
+}
+
+function hashString(s: string): string {
+  return createHash('sha256').update(s).digest('hex');
 }
 
 async function resolveTenantByChannel(

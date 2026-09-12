@@ -1,7 +1,7 @@
 import { useDashboard } from '../hooks/useApi';
 import { StatusBadge, UrgencyBadge, StatCard, Spinner } from '../components/UI';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { Inbox, ClipboardList, AlertTriangle, Clock, DollarSign } from 'lucide-react';
+import { Inbox, ClipboardList, AlertTriangle, Clock, DollarSign, Star } from 'lucide-react';
 
 const COLORS = ['#0ea5e9', '#f59e0b', '#8b5cf6', '#ef4444', '#10b981', '#6b7280'];
 
@@ -29,10 +29,11 @@ export function DashboardPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard label="Open Requests" value={data.requests.open} icon={<Inbox size={20} />} />
         <StatCard label="Active Work Orders" value={data.work_orders.assigned + data.work_orders.inProgress} icon={<ClipboardList size={20} />} />
         <StatCard label="SLA Breaches (24h)" value={data.sla.unacked_24h} icon={<AlertTriangle size={20} />} sub={data.sla.unacked_24h > 0 ? 'Needs attention' : 'All clear'} />
+        <StatCard label="CSAT" value={data.csat.responses > 0 ? `${data.csat.avg_score.toFixed(1)} / 5` : '—'} icon={<Star size={20} />} sub={data.csat.responses > 0 ? `${data.csat.responses} responses` : 'No responses yet'} />
         <StatCard label="Est. Costs" value={`$${(data.work_orders.estCostCents / 100).toFixed(0)}`} icon={<DollarSign size={20} />} sub="All work orders" />
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

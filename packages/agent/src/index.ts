@@ -3,6 +3,7 @@ export * from './llm/mock.js';
 export * from './llm/anthropic.js';
 export * from './llm/openai.js';
 export * from './llm/factory.js';
+export * from './llm/embedder.js';
 export * from './rules/emergencies.js';
 export * from './triage/schema.js';
 export * from './triage/classifier.js';
