@@ -17,6 +17,8 @@ describe.skipIf(!runIntegration)('RLS tenant isolation', () => {
     loadRootEnv();
     const { migrate } = await import('../src/migrate.js');
     await migrate();
+    const { seed } = await import('../src/seed.js');
+    await seed();
   });
 
   it('tenant B is fully invisible to tenant A and vice versa', async () => {
