@@ -14,13 +14,8 @@
     "sourceMap": true,
     "resolveJsonModule": true,
     "types": ["node"],
-    "baseUrl": ".",
     "paths": {
-      "@pma/core": ["packages/core/src/index.ts"],
-      "@pma/db": ["packages/db/src/index.ts"],
-      "@pma/agent": ["packages/agent/src/index.ts"],
-      "@pma/api": ["packages/api/src/index.ts"],
-      "@pma/worker": ["packages/worker/src/index.ts"]
+      "@pma/*": ["./packages/*/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "dist"]
